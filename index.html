@@ -2616,7 +2616,7 @@ FDX.DATALAYER.rateShipApp = {
                     type="text"
                     class="fxg-field__input-text"
                     name="trackingNumber"
-                    placeholder="e.g. 1Z999AA10123456784"
+                    placeholder="input tracking number"
                     aria-required="true"
                     aria-describedby="errorMessage"
                     data-errmsg="Please enter at least one tracking number."
@@ -2761,6 +2761,10 @@ FDX.DATALAYER.rateShipApp = {
             width: 100%;
             margin: 0 auto;
         }
+
+		::placeholder {
+			color: grey;
+		}
 
         /* ── Card container ── */
         .tracking-card {
