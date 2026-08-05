@@ -1,0 +1,47 @@
+{
+  "1Z999AA10123456784": {
+    "tracking_id": "1Z999AA10123456784",
+    "status": "In Transit",
+    "origin": "Memphis, TN",
+    "destination": "Seattle, WA",
+    "service": "FedEx Ground",
+    "expected_delivery": "2026-08-05",
+    "history": [
+      {"timestamp":"2026-08-02T10:12:00Z","location":"Memphis, TN","desc":"Departed FedEx facility"},
+      {"timestamp":"2026-08-03T02:30:00Z","location":"Nashville, TN","desc":"Arrived at FedEx station"}
+    ],
+    "weight": "2.5 lb",
+    "dimensions": "10x6x4 in",
+    "signed_by": null
+  },
+  "123456789012": {
+    "tracking_id": "1Z999AA10123456784",
+    "status": "In Transit",
+    "origin": "Memphis, TN",
+    "destination": "Seattle, WA",
+    "service": "FedEx Ground",
+    "expected_delivery": "2026-08-05",
+    "history": [
+      {"timestamp":"2026-08-02T10:12:00Z","location":"Memphis, TN","desc":"Departed FedEx facility"},
+      {"timestamp":"2026-08-03T02:30:00Z","location":"Nashville, TN","desc":"Arrived at FedEx station"}
+    ],
+    "weight": "2.5 lb",
+    "dimensions": "10x6x4 in",
+    "signed_by": null
+  },
+  "TRK1234567890": {
+    "tracking_id": "TRK1234567890",
+    "status": "Delivered",
+    "origin": "Lagos, NG",
+    "destination": "Abuja, NG",
+    "service": "FedEx Express",
+    "expected_delivery": "2026-07-30",
+    "history": [
+      {"timestamp":"2026-07-28T08:00:00Z","location":"Lagos, NG","desc":"Picked up"},
+      {"timestamp":"2026-07-30T14:20:00Z","location":"Abuja, NG","desc":"Delivered - signature captured"}
+    ],
+    "weight": "1.2 kg",
+    "dimensions": "8x5x3 in",
+    "signed_by": "A. Okafor"
+  }
+}

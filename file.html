@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracking Results</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 20px; }
+    .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #4D148C; border-bottom: 2px solid #FF6200; padding-bottom: 10px; }
+    .result-field { margin-bottom: 15px; }
+    .result-field label { font-weight: 600; display: inline-block; width: 150px; }
+    .result-field span { color: #333; }
+    .history-item { background: #f5f5f5; padding: 8px 12px; margin: 5px 0; border-left: 4px solid #4CAF50; border-radius: 4px; }
+    .history-item .timestamp { font-weight: 600; font-size: 0.9em; }
+    .history-item .location { color: #555; }
+    #trackingMap { width: 100%; height: 400px; margin-top: 20px; border-radius: 8px; }
+    .error { color: #de002e; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <h1>📦 Tracking Details</h1>
+    <div id="loading">Loading tracking information...</div>
+    <div id="results" style="display:none;">
+      <div id="fields"></div>
+      <div id="history"></div>
+      <div id="mapContainer">
+        <div id="trackingMap"></div>
+        <div id="mapErrorMessage" style="color:#de002e; display:none;"></div>
+      </div>
+    </div>
+    <div id="errorMessage" class="error" style="display:none;"></div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    (function() {
+      'use strict';
+
+      // ---- Same inline data ----
+      const INLINE_DATA = {
+        "1Z999AA10123456784": {
+          "tracking_id": "1Z999AA10123456784",
+          "status": "In Transit",
+          "origin": "Memphis, TN",
+          "destination": "Seattle, WA",
+          "service": "FedEx Ground",
+          "expected_delivery": "2026-08-05",
+          "history": [
+            {"timestamp":"2026-08-02T10:12:00Z","location":"Memphis, TN","desc":"Departed FedEx facility"},
+            {"timestamp":"2026-08-03T02:30:00Z","location":"Nashville, TN","desc":"Arrived at FedEx station"}
+          ],
+          "weight": "2.5 lb",
+          "dimensions": "10x6x4 in",
+          "signed_by": null
+        },
+        "TRK1234567890": {
+          "tracking_id": "TRK1234567890",
+          "status": "Delivered",
+          "origin": "Lagos, NG",
+          "destination": "Abuja, NG",
+          "service": "FedEx Express",
+          "expected_delivery": "2026-07-30",
+          "history": [
+            {"timestamp":"2026-07-28T08:00:00Z","location":"Lagos, NG","desc":"Picked up"},
+            {"timestamp":"2026-07-30T14:20:00Z","location":"Abuja, NG","desc":"Delivered - signature captured"}
+          ],
+          "weight": "1.2 kg",
+          "dimensions": "8x5x3 in",
+          "signed_by": "A. Okafor"
+        }
+      };
+
+      // ---- DOM refs ----
+      const loading = document.getElementById('loading');
+      const resultsDiv = document.getElementById('results');
+      const fieldsDiv = document.getElementById('fields');
+      const historyDiv = document.getElementById('history');
+      const errorDiv = document.getElementById('errorMessage');
+      const mapContainer = document.getElementById('trackingMap');
+      const mapErrorMsg = document.getElementById('mapErrorMessage');
+
+      let trackingData = null;
+      let map = null;
+
+      // ---- Helper: create history items ----
+      function createHistoryItem(item) {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `
+          <div class="timestamp">${new Date(item.timestamp).toLocaleString()}</div>
+          <div class="location">📍 ${item.location}</div>
+          <div>${item.desc}</div>
+        `;
+        return div;
+      }
+
+      // ---- Geocode ----
+      async function geocodeLocation(location) {
+        if (!location) return null;
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`;
+        try {
+          const response = await fetch(url, { headers: { 'User-Agent': 'TrackingModule/1.0' } });
+          if (!response.ok) throw new Error('Geocoding error');
+          const data = await response.json();
+          if (data && data.length > 0) {
+            return {
+              lat: parseFloat(data[0].lat),
+              lng: parseFloat(data[0].lon),
+              display: data[0].display_name
+            };
+          }
+        } catch (err) {
+          console.warn('Geocoding failed for', location, err);
+        }
+        return null;
+      }
+
+      // ---- Map update ----
+      async function updateMap(originStr, destStr) {
+        if (map) { map.remove(); map = null; }
+        mapErrorMsg.style.display = 'none';
+        mapErrorMsg.textContent = '';
+
+        const [originGeo, destGeo] = await Promise.all([
+          geocodeLocation(originStr),
+          geocodeLocation(destStr)
+        ]);
+
+        if (!originGeo && !destGeo) {
+          mapErrorMsg.textContent = 'Could not map locations – geocoding service unavailable.';
+          mapErrorMsg.style.display = 'block';
+          return;
+        }
+
+        const coords = [];
+        if (originGeo) coords.push([originGeo.lat, originGeo.lng]);
+        if (destGeo) coords.push([destGeo.lat, destGeo.lng]);
+
+        map = L.map(mapContainer, {
+          center: coords.length > 0 ? coords[0] : [0, 0],
+          zoom: 13,
+          zoomControl: true
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        if (coords.length === 2) map.fitBounds(coords, { padding: [50, 50] });
+        else if (coords.length === 1) map.setView(coords[0], 10);
+
+        const originIcon = L.divIcon({
+          className: 'custom-div-icon',
+          html: '<div style="background-color:#2ecc71; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px #000;"></div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+        const destIcon = L.divIcon({
+          className: 'custom-div-icon',
+          html: '<div style="background-color:#e74c3c; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 0 4px #000;"></div>',
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+
+        const group = L.layerGroup().addTo(map);
+        if (originGeo) {
+          L.marker([originGeo.lat, originGeo.lng], { icon: originIcon })
+            .bindPopup(`<b>Origin</b><br>${originGeo.display || originStr}`)
+            .addTo(group);
+        }
+        if (destGeo) {
+          L.marker([destGeo.lat, destGeo.lng], { icon: destIcon })
+            .bindPopup(`<b>Destination</b><br>${destGeo.display || destStr}`)
+            .addTo(group);
+        }
+        if (originGeo && destGeo) {
+          L.polyline([
+            [originGeo.lat, originGeo.lng],
+            [destGeo.lat, destGeo.lng]
+          ], { color: '#3498db', weight: 3, opacity: 0.6, dashArray: '5, 10' })
+            .addTo(group);
+        }
+      }
+
+      // ---- Display results ----
+      async function displayResults(tracking) {
+        // Populate fields
+        const fields = [
+          { label: 'Tracking ID', value: tracking.tracking_id },
+          { label: 'Status', value: tracking.status },
+          { label: 'Service', value: tracking.service },
+          { label: 'Origin', value: tracking.origin },
+          { label: 'Destination', value: tracking.destination },
+          { label: 'Expected Delivery', value: tracking.expected_delivery },
+          { label: 'Weight', value: tracking.weight },
+          { label: 'Dimensions', value: tracking.dimensions },
+          { label: 'Signed By', value: tracking.signed_by || 'Pending' }
+        ];
+        fieldsDiv.innerHTML = fields.map(f =>
+          `<div class="result-field"><label>${f.label}:</label><span>${f.value}</span></div>`
+        ).join('');
+
+        // History
+        historyDiv.innerHTML = '';
+        if (tracking.history && Array.isArray(tracking.history)) {
+          tracking.history.forEach(item => {
+            historyDiv.appendChild(createHistoryItem(item));
+          });
+        }
+
+        resultsDiv.style.display = 'block';
+        loading.style.display = 'none';
+
+        // Map
+        await updateMap(tracking.origin, tracking.destination);
+      }
+
+      // ---- Load data ----
+      async function loadTrackingData() {
+        try {
+          const response = await fetch('./tracking.json');
+          if (response.ok) {
+            const data = await response.json();
+            if (data && typeof data === 'object') {
+              trackingData = data;
+              return;
+            }
+          }
+        } catch (e) {}
+        trackingData = INLINE_DATA;
+      }
+
+      // ---- Init ----
+      async function init() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const trackingId = urlParams.get('trackingNumber');
+        if (!trackingId) {
+          errorDiv.textContent = 'No tracking number provided.';
+          errorDiv.style.display = 'block';
+          loading.style.display = 'none';
+          return;
+        }
+
+        await loadTrackingData();
+        const tracking = trackingData[trackingId];
+        if (!tracking) {
+          errorDiv.textContent = 'Tracking ID not found in our system.';
+          errorDiv.style.display = 'block';
+          loading.style.display = 'none';
+          return;
+        }
+
+        await displayResults(tracking);
+      }
+
+      // Run
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
+    })();
+  </script>
+</body>
+</html>
